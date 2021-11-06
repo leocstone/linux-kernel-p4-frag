@@ -20,6 +20,8 @@ MODULE_DESCRIPTION("LKP - Project 4 Fragmentation Indicator");
 static int recording = 0; 	/* Nonzero if currently recording */
 static int rate = 3;		/* Seconds between timer callbacks */
 
+module_param(rate, int, 0660);
+
 struct frag_sample {
 	struct list_head list;
 	ktime_t timestamp;
@@ -251,7 +253,12 @@ static void sample_timer_callback(struct timer_list *timer)
 
 static int __init frag_init(void)
 {
-	struct proc_dir_entry *frag_dir = proc_mkdir("frag", NULL);
+	struct proc_dir_entry *frag_dir;
+	if(rate <= 0) {
+		printk(KERN_WARNING "Invalid rate parameter. Exiting.\n");
+		return -1;
+	}
+	frag_dir = proc_mkdir("frag", NULL);
 	proc_create("info", 0, frag_dir, &frag_proc_fops);
 	proc_create("record", 0, frag_dir, &record_proc_fops);
 	proc_create("last_recording", 0, frag_dir, &recording_proc_fops);
