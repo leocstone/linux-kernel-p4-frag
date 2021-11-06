@@ -28,6 +28,8 @@ struct frag_sample {
 /* Sample list */
 static LIST_HEAD(sample_list);
 
+static DEFINE_SPINLOCK(list_lock);
+
 /* Adapted from mm/vmstat.c */
 /*
  * Walk zones in a node and count using a callback.
@@ -72,17 +74,21 @@ static void add_new_sample(ktime_t time)
 	pgdat = NODE_DATA(0);
 	count_zones_in_node(pgdat, true, false, count_nr_free, new_sample);
 
+	spin_lock(&list_lock);
 	list_add_tail(&new_sample->list, &sample_list);
+	spin_unlock(&list_lock);
 }
 
 static void destroy_list_and_free(void)
 {
 	struct frag_sample *current_sample, *next;
+	spin_lock(&list_lock);
 	list_for_each_entry_safe(current_sample, next, &sample_list, list) {
 		list_del(&current_sample->list);
 		kfree(current_sample);
 	}
 	INIT_LIST_HEAD(&sample_list);
+	spin_unlock(&list_lock);
 }
 
 static struct timer_list sample_timer;
@@ -190,6 +196,7 @@ static int recording_proc_show(struct seq_file *m, void *v)
 			seq_printf(m, ",");
 	}
 	seq_putc(m, '\n');
+	spin_lock(&list_lock);
 	list_for_each_entry(current_sample, &sample_list, list) {
 		seq_printf(m, "%lld,", current_sample->timestamp);
 		for(i = 0; i < MAX_ORDER; i++) {
@@ -199,6 +206,7 @@ static int recording_proc_show(struct seq_file *m, void *v)
 		}
 		seq_putc(m, '\n');
 	}
+	spin_unlock(&list_lock);
 	return 0;
 }
 
@@ -228,7 +236,7 @@ static int __init frag_init(void)
 	struct proc_dir_entry *frag_dir = proc_mkdir("frag", NULL);
 	proc_create("info", 0, frag_dir, &frag_proc_fops);
 	proc_create("record", 0, frag_dir, &record_proc_fops);
-	proc_create("data", 0, frag_dir, &recording_proc_fops);
+	proc_create("last_recording", 0, frag_dir, &recording_proc_fops);
 	return 0;
 }
 
