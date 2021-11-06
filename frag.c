@@ -10,6 +10,7 @@
 #include <linux/timekeeping.h>
 #include <linux/timer.h>
 #include <linux/list.h>
+#include <linux/string.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Leo Stone");
@@ -17,12 +18,14 @@ MODULE_DESCRIPTION("LKP - Project 4 Fragmentation Indicator");
 
 /* Globals used by timer callback */
 static int recording = 0; 	/* Nonzero if currently recording */
-static int rate = 1;		/* Seconds between timer callbacks */
+static int rate = 3;		/* Seconds between timer callbacks */
 
 struct frag_sample {
 	struct list_head list;
 	ktime_t timestamp;
 	long unsigned int nr_free[MAX_ORDER];
+	long unsigned int usable_pages[MAX_ORDER];
+	long unsigned int free_pages;
 };
 
 /* Sample list */
@@ -57,11 +60,23 @@ static void count_zones_in_node(pg_data_t *pgdat, bool assert_populated, bool no
 static void count_nr_free(pg_data_t *pgdat, struct zone *zone, struct frag_sample *new_sample)
 {
 	int order;
+	int j;
 
-	for(order = 0; order < MAX_ORDER; ++order)
+	/* For now, only track fragmentation in the Normal zone */
+	if(strcmp(zone->name, "Normal"))
+		return;
+
+	for(order = 0; order < MAX_ORDER; ++order) {
 		new_sample->nr_free[order] += zone->free_area[order].nr_free;
-}
+		new_sample->free_pages += (1L << order) * new_sample->nr_free[order];
+	}
 
+	for(order = 0; order < MAX_ORDER; ++order) {
+		for(j = order; j < MAX_ORDER; j++) {
+			new_sample->usable_pages[order] += (1L << j) * new_sample->nr_free[j];
+		}	
+	}
+}
 
 static void add_new_sample(ktime_t time)
 {
@@ -69,6 +84,8 @@ static void add_new_sample(ktime_t time)
 	struct frag_sample *new_sample = kmalloc(sizeof(struct frag_sample), GFP_KERNEL);
 	new_sample->timestamp = time;
 	memset(&new_sample->nr_free[0], 0, sizeof(long unsigned int) * MAX_ORDER);
+	memset(&new_sample->usable_pages[0], 0, sizeof(long unsigned int) * MAX_ORDER);
+	new_sample->free_pages = 0;
 
 	/* Note: This will only get complete info for UMA machines. */
 	pgdat = NODE_DATA(0);
@@ -191,7 +208,7 @@ static int recording_proc_show(struct seq_file *m, void *v)
 	int i;
 	seq_printf(m, "time,");
 	for(i = 0; i < MAX_ORDER; i++) {
-		seq_printf(m, "%d", i);
+		seq_printf(m, "unusable_free_space_index_%d,free_blocks_%d", i, i);
 		if(i < MAX_ORDER - 1)
 			seq_printf(m, ",");
 	}
@@ -200,6 +217,8 @@ static int recording_proc_show(struct seq_file *m, void *v)
 	list_for_each_entry(current_sample, &sample_list, list) {
 		seq_printf(m, "%lld,", current_sample->timestamp);
 		for(i = 0; i < MAX_ORDER; i++) {
+			seq_printf(m, "%lu/", (current_sample->free_pages - current_sample->usable_pages[i]));
+			seq_printf(m, "%lu,", current_sample->free_pages);
 			seq_printf(m, "%lu", current_sample->nr_free[i]); 
                 	if(i < MAX_ORDER - 1)
                         	seq_printf(m, ",");  		
@@ -224,7 +243,6 @@ static const struct proc_ops recording_proc_fops = {
 
 static void sample_timer_callback(struct timer_list *timer)
 {
-	printk(KERN_INFO "%d seconds elapsed\n", rate);
 	add_new_sample(ktime_get_real());
 	if(recording) {
 		arm_timer();
