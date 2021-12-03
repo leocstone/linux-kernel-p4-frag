@@ -22,6 +22,7 @@
 #include <linux/mm.h>
 #include <linux/swap.h>
 #include <linux/math64.h>
+#include <linux/workqueue.h>
 
 
 MODULE_LICENSE("GPL");
@@ -76,6 +77,15 @@ static void compact_nodes(void){
 		my_compact_node(nid);
 	}
 }
+
+/* This is for the work queue which we use to launch compaction */
+struct work_item {
+	struct work_struct ws;
+}; 
+
+struct workqueue_struct *my_wq;
+struct work_item *wi;
+
 
 /* This is the skeleton code we need to setup the dummy kprobes*/
 // Since kernel v5.7, we can't use kallsyms_lookup_name
@@ -341,6 +351,12 @@ static int recording_proc_open(struct inode *inode, struct file *file)
 /*********** RECORDING PROC END **************/
 
 
+static void handler(struct work_struct *work){
+	printk(KERN_INFO "Compacting work queue job STARTED\n");
+	compact_nodes();
+	printk(KERN_INFO "Compacting work queue job FINISHED\n");
+}
+
 /* When recording is turned on, this function is periodically
  * called on an interval. It takes a sample of the buddy
  * allocator state and determines if manual compaction is
@@ -354,7 +370,8 @@ static void sample_timer_callback(struct timer_list *timer)
 	// Check the score of the sample now
 	if(sample_score >= 10){
 		printk(KERN_INFO "Triggering Compaction! score:%lu \n", sample_score);
-		compact_nodes();	
+		queue_work(my_wq, &wi->ws);
+		//compact_nodes();	
 	}
 
 	if(recording) {
@@ -404,6 +421,11 @@ static int __init frag_init(void)
 		return -1;
 	}
 
+	// Setup our work queue and work item
+	my_wq = create_workqueue("frag_compaction_wq");
+	wi = kmalloc(sizeof(struct work_item), GFP_ATOMIC);
+	INIT_WORK(&wi->ws, handler);
+
 	frag_dir = proc_mkdir("frag", NULL);
 	proc_create("info", 0, frag_dir, &frag_proc_fops);
 	proc_create("record", 0, frag_dir, &record_proc_fops);
@@ -419,6 +441,12 @@ static void __exit frag_exit(void)
 		del_timer(&sample_timer);
 	}
 	destroy_list_and_free();
+
+	// Destroy our work queue
+	// Make sure it's finished its work
+	flush_workqueue(my_wq);
+	kfree(wi);
+	destroy_workqueue(my_wq);
 }
 
 module_init(frag_init);
