@@ -3,7 +3,7 @@
 # The order of the number of pages to allocate 
 # Example: if ORDER_TO_ALLOC=10, 2^10 = 1024 pages
 # will be allocated by each fragmentation code
-ORDER_TO_ALLOC=18
+ORDER_TO_ALLOC=21
 
 # Run all six at the same time to force a little fragmentation
 # These six correspond to the number of cores on our test cpu

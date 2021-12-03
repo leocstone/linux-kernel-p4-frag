@@ -227,6 +227,7 @@ static void frag_show_print(struct seq_file *m, pg_data_t *pgdat, struct zone *z
 }
 
 
+/*********** FRAG PROC **************/
 static int frag_proc_show(struct seq_file *m, void *v)
 {
 	int nid;
@@ -252,14 +253,10 @@ static int frag_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, frag_proc_show, NULL);
 }
+/*********** FRAG PROC END **************/
 
-static const struct proc_ops frag_proc_fops = {
-	.proc_open = frag_proc_open,
-	.proc_read = seq_read,
-	.proc_lseek = seq_lseek,
-	.proc_release = single_release,
-};
 
+/*********** RECORD PROC **************/
 /* /proc entry to start/stop recording */
 static int record_proc_show(struct seq_file *m, void *v)
 {
@@ -280,14 +277,10 @@ static int record_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, record_proc_show, NULL);
 }
+/*********** RECORD PROC END **************/
 
-static const struct proc_ops record_proc_fops = {
-	.proc_open = record_proc_open,
-	.proc_read = seq_read,
-	.proc_lseek = seq_lseek,
-	.proc_release = single_release,
-};
 
+/*********** RECORDING PROC **************/
 /* /proc entry to output last recording in CSV format */
 static int recording_proc_show(struct seq_file *m, void *v)
 {
@@ -320,13 +313,8 @@ static int recording_proc_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, recording_proc_show, NULL);
 }
+/*********** RECORDING PROC END **************/
 
-static const struct proc_ops recording_proc_fops = {
-	.proc_open = recording_proc_open,
-	.proc_read = seq_read,
-	.proc_lseek = seq_lseek,
-	.proc_release = single_release,
-};
 
 static void sample_timer_callback(struct timer_list *timer)
 {
@@ -335,6 +323,27 @@ static void sample_timer_callback(struct timer_list *timer)
 		arm_timer();
 	}
 }
+
+static const struct proc_ops record_proc_fops = {
+	.proc_open = record_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
+static const struct proc_ops frag_proc_fops = {
+	.proc_open = frag_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+
+static const struct proc_ops recording_proc_fops = {
+	.proc_open = recording_proc_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
 
 static int __init frag_init(void)
 {
