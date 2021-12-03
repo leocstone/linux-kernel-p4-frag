@@ -13,8 +13,6 @@ ORDER_TO_ALLOC=21
 ./forced-frag/forceFrag $ORDER_TO_ALLOC & \
 ./forced-frag/forceFrag $ORDER_TO_ALLOC & \
 ./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-./forced-frag/forceFrag $ORDER_TO_ALLOC & \
 ./forced-frag/forceFrag $ORDER_TO_ALLOC
 
 # Now let's run the module and see what happens 
@@ -22,7 +20,8 @@ ORDER_TO_ALLOC=21
 #sudo insmod frag.ko
 #cat /proc/frag/info
 #sudo rmmod frag.ko
-#dmesg | tail -n 15
+
+dmesg | tail -n 15
 
 #cat /proc/frag/record
 
