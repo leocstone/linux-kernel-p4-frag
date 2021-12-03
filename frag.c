@@ -21,6 +21,8 @@
 #include <linux/compaction.h>
 #include <linux/mm.h>
 #include <linux/swap.h>
+#include <linux/math64.h>
+
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Leo Stone, Gregory Bolet, Sam Sklopan");
@@ -114,6 +116,23 @@ static u8* get_ksymbol_by_name(const char* func_name){
 	return target_func;
 }
 
+/* 
+ * This function returns the unusable free space score.
+ * The value is between [0,100], where 0 is the favorable score
+ * and a value of 100 means that there is no usable free space.
+ * You can intuitively think of a score (e.g: 75) as there being
+ * 75% unusable free space in the memory to satisfy the allocation of
+ * 2^(requested order).
+ * */
+static unsigned long int calc_unusable_free_space_index(int order, struct frag_sample* sample){
+
+	if(sample->free_pages == 0){
+		return 100;
+	}
+
+	return div64_ul(((sample->free_pages - sample->usable_pages[order])*100), sample->free_pages);
+
+}
 
 /* Adapted from mm/vmstat.c */
 /*
@@ -139,6 +158,7 @@ static void count_zones_in_node(pg_data_t *pgdat, bool assert_populated, bool no
         }
 }
 
+
 static void count_nr_free(pg_data_t *pgdat, struct zone *zone, struct frag_sample *new_sample)
 {
 	int order;
@@ -160,7 +180,7 @@ static void count_nr_free(pg_data_t *pgdat, struct zone *zone, struct frag_sampl
 	}
 }
 
-static void add_new_sample(ktime_t time)
+static struct frag_sample* add_new_sample(ktime_t time)
 {
 	pg_data_t *pgdat;
 	struct frag_sample *new_sample = kmalloc(sizeof(struct frag_sample), GFP_KERNEL);
@@ -176,6 +196,8 @@ static void add_new_sample(ktime_t time)
 	spin_lock(&list_lock);
 	list_add_tail(&new_sample->list, &sample_list);
 	spin_unlock(&list_lock);
+
+	return list_last_entry(&sample_list, struct frag_sample, list);
 }
 
 static void destroy_list_and_free(void)
@@ -258,7 +280,7 @@ static int frag_proc_open(struct inode *inode, struct file *file)
 
 /*********** RECORD PROC **************/
 /* /proc entry to start/stop recording */
-static int record_proc_show(struct seq_file *m, void *v)
+static int  record_proc_show(struct seq_file *m, void *v)
 {
 	recording = !recording;
 	if(recording) {
@@ -288,7 +310,7 @@ static int recording_proc_show(struct seq_file *m, void *v)
 	int i;
 	seq_printf(m, "time,");
 	for(i = 0; i < MAX_ORDER; i++) {
-		seq_printf(m, "unusable_free_space_index_%d,free_blocks_%d", i, i);
+		seq_printf(m, "unusable_free_space_index_%d,free_pages%d,usable_pages%d,free_blocks_%d", i, i, i, i);
 		if(i < MAX_ORDER - 1)
 			seq_printf(m, ",");
 	}
@@ -297,8 +319,11 @@ static int recording_proc_show(struct seq_file *m, void *v)
 	list_for_each_entry(current_sample, &sample_list, list) {
 		seq_printf(m, "%lld,", current_sample->timestamp);
 		for(i = 0; i < MAX_ORDER; i++) {
-			seq_printf(m, "%lu/", (current_sample->free_pages - current_sample->usable_pages[i]));
+			//seq_printf(m, "%lu/", (current_sample->free_pages - current_sample->usable_pages[i]));
+			//seq_printf(m, "%lu,", current_sample->free_pages);
+			seq_printf(m, "%lu,", calc_unusable_free_space_index(i, current_sample));
 			seq_printf(m, "%lu,", current_sample->free_pages);
+			seq_printf(m, "%lu,", current_sample->usable_pages[i]);
 			seq_printf(m, "%lu", current_sample->nr_free[i]); 
                 	if(i < MAX_ORDER - 1)
                         	seq_printf(m, ",");  		
@@ -316,9 +341,22 @@ static int recording_proc_open(struct inode *inode, struct file *file)
 /*********** RECORDING PROC END **************/
 
 
+/* When recording is turned on, this function is periodically
+ * called on an interval. It takes a sample of the buddy
+ * allocator state and determines if manual compaction is
+ * needed. */
 static void sample_timer_callback(struct timer_list *timer)
 {
-	add_new_sample(ktime_get_real());
+	struct frag_sample* last_sample = add_new_sample(ktime_get_real());
+
+	unsigned long int sample_score = calc_unusable_free_space_index(4, last_sample);
+
+	// Check the score of the sample now
+	if(sample_score >= 10){
+		printk(KERN_INFO "Triggering Compaction! score:%lu \n", sample_score);
+		compact_nodes();	
+	}
+
 	if(recording) {
 		arm_timer();
 	}
@@ -370,7 +408,6 @@ static int __init frag_init(void)
 	proc_create("info", 0, frag_dir, &frag_proc_fops);
 	proc_create("record", 0, frag_dir, &record_proc_fops);
 	proc_create("last_recording", 0, frag_dir, &recording_proc_fops);
-
 
 	return 0;
 }

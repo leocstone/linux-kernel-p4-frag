@@ -19,8 +19,10 @@ ORDER_TO_ALLOC=21
 
 # Now let's run the module and see what happens 
 # before and after manual compaction
-sudo insmod frag.ko
-cat /proc/frag/info
-sudo rmmod frag.ko
+#sudo insmod frag.ko
+#cat /proc/frag/info
+#sudo rmmod frag.ko
 #dmesg | tail -n 15
+
+#cat /proc/frag/record
 
