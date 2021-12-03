@@ -23,9 +23,37 @@
 #include <linux/swap.h>
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Leo Stone");
-MODULE_DESCRIPTION("LKP - Project 4 Fragmentation Indicator");
+MODULE_AUTHOR("Leo Stone, Gregory Bolet, Sam Sklopan");
+MODULE_DESCRIPTION("LKP - Project 4 Fragmentation Tuner");
 
+/* Globals used by timer callback */
+static int recording = 0; 	/* Nonzero if currently recording */
+static int rate = 3;		/* Seconds between timer callbacks */
+
+module_param(rate, int, 0660);
+
+struct frag_sample {
+	struct list_head list;
+	ktime_t timestamp;
+	long unsigned int nr_free[MAX_ORDER];
+	long unsigned int usable_pages[MAX_ORDER];
+	long unsigned int free_pages;
+};
+
+/* Sample list */
+static LIST_HEAD(sample_list);
+
+static DEFINE_SPINLOCK(list_lock);
+
+static struct timer_list sample_timer;
+
+/* Timer callback */
+static void sample_timer_callback(struct timer_list*);
+
+static void arm_timer(void)
+{
+	mod_timer(&sample_timer, jiffies + msecs_to_jiffies(rate * 1000));
+}
 
 /* These functions are used for the compaction routine.
  * They will have their actual kernel functions found by
@@ -86,24 +114,6 @@ static u8* get_ksymbol_by_name(const char* func_name){
 	return target_func;
 }
 
-/* Globals used by timer callback */
-static int recording = 0; 	/* Nonzero if currently recording */
-static int rate = 3;		/* Seconds between timer callbacks */
-
-module_param(rate, int, 0660);
-
-struct frag_sample {
-	struct list_head list;
-	ktime_t timestamp;
-	long unsigned int nr_free[MAX_ORDER];
-	long unsigned int usable_pages[MAX_ORDER];
-	long unsigned int free_pages;
-};
-
-/* Sample list */
-static LIST_HEAD(sample_list);
-
-static DEFINE_SPINLOCK(list_lock);
 
 /* Adapted from mm/vmstat.c */
 /*
@@ -180,15 +190,6 @@ static void destroy_list_and_free(void)
 	spin_unlock(&list_lock);
 }
 
-static struct timer_list sample_timer;
-
-/* Timer callback */
-static void sample_timer_callback(struct timer_list*);
-
-static void arm_timer(void)
-{
-	mod_timer(&sample_timer, jiffies + msecs_to_jiffies(rate * 1000));
-}
 
 /* Copied from mm/vmstat.c */
 /*
@@ -231,16 +232,18 @@ static int frag_proc_show(struct seq_file *m, void *v)
 	int nid;
 	pg_data_t *pgdat;
 
-	for_each_online_node(nid)
+	for_each_online_node(nid){
 		pgdat = NODE_DATA(nid);
 		walk_zones_in_node(m, pgdat, true, false, frag_show_print);
+	}
 
 	// Perform compaction and see the difference
 	compact_nodes();
 
-	for_each_online_node(nid)
+	for_each_online_node(nid){
 		pgdat = NODE_DATA(nid);
 		walk_zones_in_node(m, pgdat, true, false, frag_show_print);
+	}
 
 	return 0;
 }
