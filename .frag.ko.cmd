@@ -1,1 +1,0 @@
-cmd_/home/gbolet/finalProj/frag.ko := ld -r -m elf_x86_64 --build-id=sha1  -T scripts/module.lds -o /home/gbolet/finalProj/frag.ko /home/gbolet/finalProj/frag.o /home/gbolet/finalProj/frag.mod.o;  true
