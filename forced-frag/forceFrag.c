@@ -14,7 +14,7 @@ int main(int argc, char** argv){
 	// Get the end position of this process's data segment
 	p = sbrk(0);
 
-	for(i = 0; i < 1000000; i++){
+	for(i = 0; i < 10000000; i++){
 		// Extend the process data segment by 1 page
 		// Though this appears contiguous in virtual memory
 		// it may not be at the physical memory level
