@@ -6,3 +6,5 @@
 !test-frag.sh
 !Makefile
 !.gitignore
+
+!/forced-frag/*.c
