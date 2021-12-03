@@ -4,26 +4,29 @@
 #include <unistd.h>
 #include <string.h>
 
+#define PAGE_SIZE_IN_BYTES 4096
+
 int main(int argc, char** argv){
 
 
 	char *p;
 	size_t i;
-	int numpages = 10000000;
+	int order;
+	unsigned long numpages;
 
 	if(argc != 2){
 		fprintf(stderr, "Not enough arguments! Provided %d, need 1\n", argc-1);
 		return -1;
 	}
 
-	printf("Forcing Fragmentation!\n");
-
-	if (sscanf (argv[1], "%i", &numpages) != 1) {
+	if (sscanf (argv[1], "%i", &order) != 1) {
     		fprintf(stderr, "error - not an integer\n");
 		return -1;
 	}
 
-	printf("Creating %d pages\n", numpages);
+	numpages = 1 << order;
+	
+	printf("Using order %d, creating %lu pages\n", order, numpages);
 
 	// Get the end position of this process's data segment
 	p = sbrk(0);
@@ -32,11 +35,11 @@ int main(int argc, char** argv){
 		// Extend the process data segment by 1 page
 		// Though this appears contiguous in virtual memory
 		// it may not be at the physical memory level
-		sbrk(4096);
+		sbrk(PAGE_SIZE_IN_BYTES);
 
 		// After the extension, let's write a character
 		// to fill up the new memory
-		memset(p + (i*4096), 'a', 4096);
+		memset(p + (i*PAGE_SIZE_IN_BYTES), 'a', PAGE_SIZE_IN_BYTES);
 	}
 
 	printf("Forced Fragmentation Complete!\n");
