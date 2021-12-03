@@ -11,10 +11,80 @@
 #include <linux/timer.h>
 #include <linux/list.h>
 #include <linux/string.h>
+#include <linux/kprobes.h>
+#include <linux/kallsyms.h>
+#include <linux/compaction.h>
+#include <linux/gfp.h>
+#include <linux/stacktrace.h>
+#include <linux/sched.h>
+#include <asm/msr.h>
+#include <linux/compaction.h>
+#include <linux/mm.h>
+#include <linux/swap.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Leo Stone");
 MODULE_DESCRIPTION("LKP - Project 4 Fragmentation Indicator");
+
+
+/* These functions are used for the compaction routine.
+ * They will have their actual kernel functions found by
+ * registering (and unregistering) dummy kprobes to them */
+void (*my_compact_node) (int);
+void (*my_lru_add_drain_all) (void);
+
+/* This function performs the compaction manually 
+ * for all NUMA nodes. This code was taken from the
+ * /proc/sys/vm/compact_nodes kernel interface */
+static void compact_nodes(void){
+
+	int nid;
+
+	my_lru_add_drain_all();
+
+	for_each_online_node(nid){
+		my_compact_node(nid);
+	}
+}
+
+/* This is the skeleton code we need to setup the dummy kprobes*/
+// Since kernel v5.7, we can't use kallsyms_lookup_name
+// so we instead need to query kprobes for the address of functions
+static int __kprobes dummy_pre_handler(struct kprobe *p, struct pt_regs *regs){
+	return 0;
+}
+
+static void __kprobes dummy_post_handler(struct kprobe*p, struct pt_regs *regs, unsigned long flags){
+	return;
+}
+
+// Let's make a function to get any function symbol we want by name
+static u8* get_ksymbol_by_name(const char* func_name){
+
+	int ret;
+	u8* target_func = 0;
+
+	struct kprobe dummy_probe= {
+		.symbol_name		= func_name,
+		.pre_handler		= dummy_pre_handler,
+		.post_handler		= dummy_post_handler,
+	};
+
+	ret = register_kprobe(&dummy_probe);
+	if(ret < 0){
+		pr_err("register_kprobe failed, returned %d\n", ret);
+		return 0;
+	}
+
+	// Print the address for the function of interest
+	pr_info("Planted kprobe at %s: %p\n", dummy_probe.symbol_name, dummy_probe.addr);
+
+	target_func = dummy_probe.addr;
+
+	unregister_kprobe(&dummy_probe);
+
+	return target_func;
+}
 
 /* Globals used by timer callback */
 static int recording = 0; 	/* Nonzero if currently recording */
@@ -155,11 +225,23 @@ static void frag_show_print(struct seq_file *m, pg_data_t *pgdat, struct zone *z
 	seq_putc(m, '\n');
 }
 
+
 static int frag_proc_show(struct seq_file *m, void *v)
 {
-	/* Note: This will only get complete info for UMA machines. */
-	pg_data_t *pgdat = NODE_DATA(0);
-	walk_zones_in_node(m, pgdat, true, false, frag_show_print);
+	int nid;
+	pg_data_t *pgdat;
+
+	for_each_online_node(nid)
+		pgdat = NODE_DATA(nid);
+		walk_zones_in_node(m, pgdat, true, false, frag_show_print);
+
+	// Perform compaction and see the difference
+	compact_nodes();
+
+	for_each_online_node(nid)
+		pgdat = NODE_DATA(nid);
+		walk_zones_in_node(m, pgdat, true, false, frag_show_print);
+
 	return 0;
 }
 
@@ -258,10 +340,26 @@ static int __init frag_init(void)
 		printk(KERN_WARNING "Invalid rate parameter. Exiting.\n");
 		return -1;
 	}
+
+	/* Let's do the function lookups so we can call compact_nodes*/
+	my_compact_node = (void (*) (int)) get_ksymbol_by_name("compact_node");
+	if(!my_compact_node){
+		pr_err("FAILED TO PERFORM SYMBOL LOOKUP \n");
+		return -1;
+	}
+
+	my_lru_add_drain_all = (void (*) (void)) get_ksymbol_by_name("lru_add_drain_all");
+	if(!my_lru_add_drain_all){
+		pr_err("FAILED TO PERFORM SYMBOL LOOKUP \n");
+		return -1;
+	}
+
 	frag_dir = proc_mkdir("frag", NULL);
 	proc_create("info", 0, frag_dir, &frag_proc_fops);
 	proc_create("record", 0, frag_dir, &record_proc_fops);
 	proc_create("last_recording", 0, frag_dir, &recording_proc_fops);
+
+
 	return 0;
 }
 
