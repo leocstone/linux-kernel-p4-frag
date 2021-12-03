@@ -8,6 +8,5 @@
 !.gitignore
 
 !/forced-frag/
-!*.c
 
 
