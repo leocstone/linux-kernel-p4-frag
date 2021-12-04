@@ -1,5 +1,6 @@
 #!/bin/bash
 
+############# HYPERPARAMETERS #############
 # The number of trials to perform
 NUM_TRIALS=5
 
@@ -21,6 +22,13 @@ COMPACT_THRESH_MAX=50
 
 DISABLE_COMPACTION=0
 
+############# START TESTING #############
+# Restart the postgresql server
+sudo systemctl restart postgresql-9.6.service
+
+# Wait for service to finish initializing
+sleep 3
+
 # Let's sweep over the threshold parameter
 for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_THRESH+=10)); do
 
@@ -37,7 +45,9 @@ for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_T
 		
 		# Now lets launch the pgbench job to introduce more contention
 		# Need to login to this postgres account and lauch it
-		sudo runuser -l postgres -c 'pgbench -c 10 -j 6 -t 50000 example &'
+		# This will spawn 10 pgbench worker processes with 6 threads each.
+		# Each process is going through 100000 transaction
+		sudo runuser -l postgres -c 'pgbench -c 10 -j 6 -t 100000 example &'
 		
 		# Wait for the processes to start up
 		sleep 5
@@ -74,3 +84,4 @@ for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_T
 	fi
 done
 
+############# STOP TESTING #############
