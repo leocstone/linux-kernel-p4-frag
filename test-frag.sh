@@ -8,16 +8,15 @@ cat /proc/frag/record
 
 # Now lets launch the pgbench job to introduce more contention
 # Need to login to this postgres account and lauch it
-sudo su - postgres
-nohup pgbench -c 10 -j 6 -t 50000 example & 
-exit
+sudo runuser -l postgres -c 'pgbench -c 10 -j 6 -t 50000 example &'
 
-echo "out of pgbench launch"
+# Wait for the processes to start up
+sleep 5
 
 # The order of the number of pages to allocate 
 # Example: if ORDER_TO_ALLOC=10, 2^10 = 1024 pages
 # will be allocated by each fragmentation code
-ORDER_TO_ALLOC=20
+ORDER_TO_ALLOC=21
 
 # Run all six at the same time to force a little fragmentation
 # These six correspond to the number of cores on our test cpu
@@ -43,6 +42,9 @@ ORDER_TO_ALLOC=20
 
 cat /proc/frag/last_recording >> order_${ORDER_TO_ALLOC}_rundata.csv
 sudo rmmod frag.ko
+
+# Kill pgbench if it's still running
+sudo killall pgbench
 
 #cat /proc/frag/record
 
