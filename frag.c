@@ -40,6 +40,9 @@ static int compaction_thresh = 10;
 /* The order at which to check the unusable space score to trigger compaction */
 static int compaction_order = 4;
 
+/* Indicator flag to skip compaction */
+static int disable_compaction = 0;
+
 /* Setup our module parameters */
 module_param(rate, int, S_IRUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(rate, "The rate (in seconds) at which sampling/compaction check should be done");
@@ -49,6 +52,9 @@ MODULE_PARM_DESC(compaction_thresh, "The threshold at which (and past) to force 
 
 module_param(compaction_order, int, S_IRUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(compaction_order, "The order at which to score unusable space for compaction");
+
+module_param(disable_compaction, int, S_IRUSR | S_IRGRP | S_IROTH);
+MODULE_PARM_DESC(disable_compaction, "Should automatic compaction be disabled?");
 
 struct frag_sample {
 	struct list_head list;
@@ -380,13 +386,15 @@ static void sample_timer_callback(struct timer_list *timer)
 {
 	struct frag_sample* last_sample = add_new_sample(ktime_get_real());
 
-	unsigned long int sample_score = calc_unusable_free_space_index(compaction_order, last_sample);
+	if(!disable_compaction){
+		unsigned long int sample_score = calc_unusable_free_space_index(compaction_order, last_sample);
 
-	// Check the score of the sample now
-	if(sample_score >= compaction_thresh){
-		printk(KERN_INFO "Triggering Compaction! score:%lu \n", sample_score);
-		queue_work(my_wq, &wi->ws);
-		//compact_nodes();	
+		// Check the score of the sample now
+		if(sample_score >= compaction_thresh){
+			printk(KERN_INFO "Triggering Compaction! score:%lu \n", sample_score);
+			queue_work(my_wq, &wi->ws);
+			//compact_nodes();	
+		}
 	}
 
 	if(recording) {
@@ -433,7 +441,7 @@ static int __init frag_init(void)
 		return -1;
 	}
 
-	printk(KERN_INFO "Running with: \n\tsampling rate=%d secs\n\tcompaction_thresh=%d\n\tcompaction_order=%d\n", rate, compaction_thresh, compaction_order);
+	printk(KERN_INFO "Running with: \n\tsampling rate=%d secs\n\tcompaction_thresh=%d\n\tcompaction_order=%d\n\tdisabled compaction=%d\n", rate, compaction_thresh, compaction_order,disable_compaction);
 
 	/* Let's do the function lookups so we can call compact_nodes*/
 	my_compact_node = (void (*) (int)) get_ksymbol_by_name("compact_node");

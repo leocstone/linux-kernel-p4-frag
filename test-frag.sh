@@ -17,7 +17,9 @@ FRAG_ORDER_TO_ALLOC=22
 SAMPLE_RATE_SECS=1
 COMPACT_ORDER=4
 COMPACT_THRESH_MIN=20
-COMPACT_THRESH_MAX=80
+COMPACT_THRESH_MAX=50
+
+DISABLE_COMPACTION=0
 
 # Let's sweep over the threshold parameter
 for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_THRESH+=10)); do
@@ -27,7 +29,8 @@ for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_T
 		sudo rmmod frag.ko
 		sudo insmod frag.ko rate=$SAMPLE_RATE_SECS \
 				    compaction_order=$COMPACT_ORDER \
-				    compaction_thresh=$TRIAL_THRESH
+				    compaction_thresh=$TRIAL_THRESH \
+				    disable_compaction=$DISABLE_COMPACTION
 		
 		# Start recording and automatic compaction
 		cat /proc/frag/record
@@ -46,14 +49,28 @@ for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_T
 		./forced-frag/forceFrag $FRAG_ORDER_TO_ALLOC & \
 		./forced-frag/forceFrag $FRAG_ORDER_TO_ALLOC
 		
-		# Wait for there 6 runs to finish...
+		# Wait for the runs to finish...
+
+		# If compaction was enabled
+		if ((DISABLE_COMPACTION == 0)); then
 		
-		cat /proc/frag/last_recording >> ./rundata/order_${FRAG_ORDER_TO_ALLOC}_comporder_${COMPACT_ORDER}_compthresh_${TRIAL_THRESH}_rate_${SAMPLE_RATE_SECS}_trial_${TRIAL}_rundata.csv
+			cat /proc/frag/last_recording > ./rundata/order${FRAG_ORDER_TO_ALLOC}_comporder${COMPACT_ORDER}_compthresh${TRIAL_THRESH}_rate${SAMPLE_RATE_SECS}_trial${TRIAL}_rundata.csv
+
+		else
+			cat /proc/frag/last_recording > ./rundata/compdisabled_order${FRAG_ORDER_TO_ALLOC}_rate${SAMPLE_RATE_SECS}_trial${TRIAL}_rundata.csv
+
+		fi
+
 		sudo rmmod frag.ko
 		
 		# Kill pgbench if it's still running
 		sudo killall pgbench
 	
 	done
+	
+	# If compaction was disabled, no need for more trials
+	if ((DISABLE_COMPACTION == 1)); then
+		break
+	fi
 done
 
