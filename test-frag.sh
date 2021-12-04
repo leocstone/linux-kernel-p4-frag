@@ -20,7 +20,10 @@ COMPACT_ORDER=4
 COMPACT_THRESH_MIN=20
 COMPACT_THRESH_MAX=50
 
-DISABLE_COMPACTION=0
+DISABLE_COMPACTION=1
+
+# Amount of RAM this test is being done with
+SYSTEM_RAM=32
 
 ############# START TESTING #############
 # Restart the postgresql server
@@ -64,10 +67,10 @@ for ((TRIAL_THRESH=$COMPACT_THRESH_MIN;TRIAL_THRESH<=$COMPACT_THRESH_MAX;TRIAL_T
 		# If compaction was enabled
 		if ((DISABLE_COMPACTION == 0)); then
 		
-			cat /proc/frag/last_recording > ./rundata/order${FRAG_ORDER_TO_ALLOC}_comporder${COMPACT_ORDER}_compthresh${TRIAL_THRESH}_rate${SAMPLE_RATE_SECS}_trial${TRIAL}_rundata.csv
+			cat /proc/frag/last_recording > ./rundata/ram${SYSTEM_RAM}_order${FRAG_ORDER_TO_ALLOC}_comporder${COMPACT_ORDER}_compthresh${TRIAL_THRESH}_rate${SAMPLE_RATE_SECS}_trial${TRIAL}_rundata.csv
 
 		else
-			cat /proc/frag/last_recording > ./rundata/compdisabled_order${FRAG_ORDER_TO_ALLOC}_rate${SAMPLE_RATE_SECS}_trial${TRIAL}_rundata.csv
+			cat /proc/frag/last_recording > ./rundata/ram${SYSTEM_RAM}_compdisabled_order${FRAG_ORDER_TO_ALLOC}_rate${SAMPLE_RATE_SECS}_trial${TRIAL}_rundata.csv
 
 		fi
 
