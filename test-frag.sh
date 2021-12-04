@@ -11,7 +11,7 @@ ORDER_TO_ALLOC=21
 for ((TRIAL=1;TRIAL<=$NUM_TRIALS;TRIAL+=1)); do
 
 	sudo rmmod frag.ko
-	sudo insmod frag.ko
+	sudo insmod frag.ko rate=3 compaction_order=4 compaction_thresh=20
 	
 	# Start recording and automatic compaction
 	cat /proc/frag/record
