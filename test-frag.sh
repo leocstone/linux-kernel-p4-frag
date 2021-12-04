@@ -4,19 +4,26 @@
 NUM_TRIALS=10
 
 # The order of the number of pages to allocate 
-# Example: if ORDER_TO_ALLOC=10, 2^10 = 1024 pages
+# Example: if FRAG_ORDER_TO_ALLOC=10, 2^10 = 1024 pages
 # will be allocated by each fragmentation code
 # For reference:
-# 21 --> (2^21)*4096 = 8GiB
-# 20 --> (2^20)*4096 = 4GiB
-# 19 --> (2^19)*4096 = 2GiB
-# 18 --> (2^18)*4096 = 1GiB
-ORDER_TO_ALLOC=19
+# 22 --> (2^22)*4096 = 16 GiB
+# 21 --> (2^21)*4096 = 8  GiB
+# 20 --> (2^20)*4096 = 4  GiB
+# 19 --> (2^19)*4096 = 2  GiB
+# 18 --> (2^18)*4096 = 1  GiB
+FRAG_ORDER_TO_ALLOC=22
+
+SAMPLE_RATE_SECS=3
+COMPACT_ORDER=4
+COMPACT_THRESH=20
 
 for ((TRIAL=1;TRIAL<=$NUM_TRIALS;TRIAL+=1)); do
 
 	sudo rmmod frag.ko
-	sudo insmod frag.ko rate=3 compaction_order=4 compaction_thresh=20
+	sudo insmod frag.ko rate=$SAMPLE_RATE_SECS \
+			    compaction_order=$COMPACT_ORDER \
+			    compaction_thresh=$COMPACT_THRESH
 	
 	# Start recording and automatic compaction
 	cat /proc/frag/record
@@ -28,22 +35,16 @@ for ((TRIAL=1;TRIAL<=$NUM_TRIALS;TRIAL+=1)); do
 	# Wait for the processes to start up
 	sleep 5
 	
-	# Run eight of the forced fragmentation codes, it will make
+	# Run the forced fragmentation codes, it will make
 	# it so that the physical memory is forced to interleave the
 	# allocatin of pages for each process, in-turn fragmenting the
 	# the memory.
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC & \
-	./forced-frag/forceFrag $ORDER_TO_ALLOC 
+	./forced-frag/forceFrag $FRAG_ORDER_TO_ALLOC & \
+	./forced-frag/forceFrag $FRAG_ORDER_TO_ALLOC
 	
 	# Wait for there 6 runs to finish...
 	
-	cat /proc/frag/last_recording >> order_${ORDER_TO_ALLOC}_trial_${TRIAL}_rundata.csv
+	cat /proc/frag/last_recording >> ./rundata/order_${FRAG_ORDER_TO_ALLOC}_comporder_${COMPACT_ORDER}_compthresh_${COMPACT_THRESH}_rate_${SAMPLE_RATE_SECS}_trial_${TRIAL}_rundata.csv
 	sudo rmmod frag.ko
 	
 	# Kill pgbench if it's still running
