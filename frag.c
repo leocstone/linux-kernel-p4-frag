@@ -23,7 +23,8 @@
 #include <linux/swap.h>
 #include <linux/math64.h>
 #include <linux/workqueue.h>
-
+#include <linux/stat.h>
+#include <linux/moduleparam.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Leo Stone, Gregory Bolet, Sam Sklopan");
@@ -31,9 +32,23 @@ MODULE_DESCRIPTION("LKP - Project 4 Fragmentation Tuner");
 
 /* Globals used by timer callback */
 static int recording = 0; 	/* Nonzero if currently recording */
-static int rate = 3;		/* Seconds between timer callbacks */
+static int rate = 5;		/* Seconds between timer callbacks */
 
-module_param(rate, int, 0660);
+/* The threshold for compaction (e.g: if 10 --> compact at score of 10 or higher)*/
+static int compaction_thresh = 10;
+
+/* The order at which to check the unusable space score to trigger compaction */
+static int compaction_order = 4;
+
+/* Setup our module parameters */
+module_param(rate, int, S_IRUSR | S_IRGRP | S_IROTH);
+MODULE_PARM_DESC(rate, "The rate (in seconds) at which sampling/compaction check should be done");
+
+module_param(compaction_thresh, int, S_IRUSR | S_IRGRP | S_IROTH);
+MODULE_PARM_DESC(compaction_thresh, "The threshold at which (and past) to force compaction");
+
+module_param(compaction_order, int, S_IRUSR | S_IRGRP | S_IROTH);
+MODULE_PARM_DESC(compaction_order, "The order at which to score unusable space for compaction");
 
 struct frag_sample {
 	struct list_head list;
@@ -365,10 +380,10 @@ static void sample_timer_callback(struct timer_list *timer)
 {
 	struct frag_sample* last_sample = add_new_sample(ktime_get_real());
 
-	unsigned long int sample_score = calc_unusable_free_space_index(4, last_sample);
+	unsigned long int sample_score = calc_unusable_free_space_index(compaction_order, last_sample);
 
 	// Check the score of the sample now
-	if(sample_score >= 10){
+	if(sample_score >= compaction_thresh){
 		printk(KERN_INFO "Triggering Compaction! score:%lu \n", sample_score);
 		queue_work(my_wq, &wi->ws);
 		//compact_nodes();	
@@ -404,9 +419,21 @@ static int __init frag_init(void)
 {
 	struct proc_dir_entry *frag_dir;
 	if(rate <= 0) {
-		printk(KERN_WARNING "Invalid rate parameter. Exiting.\n");
+		printk(KERN_WARNING "Invalid rate parameter. Exiting...\n");
 		return -1;
 	}
+
+	if (compaction_thresh > 100 || compaction_thresh <= 0){
+		printk(KERN_WARNING "Invalid compaction threshold parameter. Exiting...\n");
+		return -1;
+	}
+
+	if (compaction_order >= MAX_ORDER || compaction_order < 0){
+		printk(KERN_WARNING "Invalid compaction order parameter. Exiting...\n");
+		return -1;
+	}
+
+	printk(KERN_INFO "Running with: \n\tsampling rate=%d secs\n\tcompaction_thresh=%d\n\tcompaction_order=%d\n", rate, compaction_thresh, compaction_order);
 
 	/* Let's do the function lookups so we can call compact_nodes*/
 	my_compact_node = (void (*) (int)) get_ksymbol_by_name("compact_node");
